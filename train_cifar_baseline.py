@@ -18,7 +18,7 @@ def get_device():
     else:
         return torch.device("cpu")
     
-def get_dataloaders(batch_size=128, num_workers=4):
+def get_dataloaders(batch_size=128, num_workers=2):
     transform_train = transforms.Compose([
         transforms.RandomCrop(32, padding=4),
         transforms.RandomHorizontalFlip(),

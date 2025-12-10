@@ -11,10 +11,11 @@ import time
 # print("Using device:", device)
 
 def get_device():
-    if torch.cuda.is_available():
-        return torch.device("cuda")
-    elif torch.backends.mps.is_available():
+    
+    if torch.backends.mps.is_available():
         return torch.device("mps")
+    elif torch.cuda.is_available():
+        return torch.device("cuda")
     else:
         return torch.device("cpu")
     
@@ -146,10 +147,10 @@ def main():
     )
 
     scheduler = optim.lr_scheduler.CosineAnnealingLR(
-        optimizer, T_max=100
+        optimizer, T_max=200
     )
 
-    num_epochs = 100
+    num_epochs = 200
 
     for epoch in range(1, num_epochs + 1):
         start = time.perf_counter()
@@ -166,6 +167,15 @@ def main():
             f"test_loss={test_loss:.4f} test_acc={test_acc:.4f} | "
             f"time={elapsed:.1f}s"
         )
+
+        if epoch % 10 ==0:
+            ckpt_path = f"resnet_epoch_{epoch:03d}.pt"
+            torch.save({
+                "model_state": model.state_dict(),
+                "optimizer_state": optimizer.state_dict(),
+                "epoch": epoch,
+            }, ckpt_path)
+            print(f"Saved checkpoint to {ckpt_path}")
 
 if __name__ == "__main__":
     main()

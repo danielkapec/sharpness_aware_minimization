@@ -6,6 +6,12 @@ from torchvision import datasets, transforms, models
 from pathlib import Path
 
 import time
+import argparse
+
+import json
+import csv
+import os
+from datetime import datetime
 
 # device = torch.device("mps" if torch.backends.mps.is_available() else "cpu")
 # print("Using device:", device)
@@ -126,41 +132,98 @@ def evaluate(model, dataloader, device, criterion):
     return epoch_loss, epoch_acc
 
 
-def main():
+def parse_args():
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "--epochs", "-e",
+        type = int,
+        default = 100,
+        help = "Number of training epochs",
+    )
+    parser.add_argument(
+        "--num-workers", "-nw",
+        type = int,
+        default = 0,
+        help = "Number of workers for data loader"
+    )
+    return parser.parse_args()
+
+
+def main(num_epochs: int, num_workers: int):
+
+    #log the configuration for the run
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    run_dir = Path(f"experiments/run_{timestamp}")
+    run_dir.mkdir(parents = True, exist_ok = True)
+
+    config = {
+        "num_epochs": num_epochs,
+        "num_workers": num_workers,
+        "batch_size": 128,
+        "base_lr": 0.1,
+        "momentum": 0.9,
+        "weight_decay": 5e-4,
+        "architecture": "resnet18_cifar10",
+        "device": "auto" 
+    }
+
+    with open(run_dir/"config.json","w") as f:
+        json.dump(config, f, indent = 4)
+    print(f"Run directory created at {run_dir}")
+
 
     device = get_device()
-    # running 140s per epoch on mps, want to test on cpu
+    # running 140s per epoch on mps, 6 min on cpu, 40s on gpu
     # device = torch.device("cpu")
-
     print("Using device:", device)
+    config["device"] = str(device)
 
-    train_loader, test_loader = get_dataloaders(batch_size=128)
+
+
+
+
+    train_loader, test_loader = get_dataloaders(batch_size=config["batch_size"], num_workers=num_workers)
 
     model = get_model(num_classes=10).to(device)
     criterion = nn.CrossEntropyLoss()
 
-    base_lr = .1
 
     optimizer = optim.SGD(
-        model.parameters(), lr=base_lr, momentum=0.9,
-        weight_decay=5e-4
+        model.parameters(), 
+        lr=config["base_lr"], 
+        momentum=config["momentum"],
+        weight_decay=config["weight_decay"],
     )
 
     scheduler = optim.lr_scheduler.CosineAnnealingLR(
-        optimizer, T_max=200
+        optimizer, T_max=num_epochs
     )
 
-    num_epochs = 200
+    best_acc = 0.0 # in case we overfit
+    log_path = run_dir / "log.csv"
+    with open(log_path, "w", newline = "") as f:
+        writer = csv.writer(f)
+        writer.writerow([
+            "epoch", "train_loss", "train_acc", 
+            "test_loss", "test_acc", "lr", "time"
+        ])
+
+
+
 
     for epoch in range(1, num_epochs + 1):
         start = time.perf_counter()
         train_loss, train_acc = train_one_epoch(
             model, optimizer, train_loader, device, criterion
         )
+
         test_loss, test_acc = evaluate(model, test_loader, device, criterion)
+
+        current_lr = optimizer.param_groups[0]["lr"]
         scheduler.step()
 
         elapsed = time.perf_counter() - start
+
         print(
             f"Epoch {epoch:03d} | "
             f"train_loss={train_loss:.4f} train_acc={train_acc:.4f} | "
@@ -168,14 +231,35 @@ def main():
             f"time={elapsed:.1f}s"
         )
 
-        if epoch % 10 ==0:
-            ckpt_path = f"resnet_epoch_{epoch:03d}.pt"
-            torch.save({
-                "model_state": model.state_dict(),
-                "optimizer_state": optimizer.state_dict(),
-                "epoch": epoch,
-            }, ckpt_path)
-            print(f"Saved checkpoint to {ckpt_path}")
+        with open(log_path, "a", newline="") as f:
+            writer = csv.writer(f)
+            writer.writerow([
+                epoch, train_loss, train_acc, 
+                test_loss, test_acc, current_lr, elapsed
+            ])
+
+        checkpoint = {
+            "model_state": model.state_dict(),
+            "optimizer_state": optimizer.state_dict(),
+            "scheduler_state": scheduler.state_dict(),
+            "epoch": epoch,
+            "config": config,
+            "metrics": {"test_acc": test_acc, "test_loss": test_loss}
+        }
+        if test_acc > best_acc:
+            best_acc = test_acc
+            # Save to run_dir, NOT /training_checkpoints
+            torch.save(checkpoint, run_dir / "model_best.pt") 
+            print(f"   --> New best accuracy! Saved model_best.pt")
+
+
+        # --- UPDATED: Periodic Save ---
+        if epoch % 10 == 0:
+            # FIX: Used run_dir instead of absolute path
+            ckpt_path = run_dir / f"resnet_epoch_{epoch:03d}.pt"
+            torch.save(checkpoint, ckpt_path)
+            print(f"   --> Saved checkpoint to {ckpt_path}")
 
 if __name__ == "__main__":
-    main()
+    args = parse_args()
+    main(args.epochs, args.num_workers)

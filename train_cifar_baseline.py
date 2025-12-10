@@ -127,9 +127,9 @@ def evaluate(model, dataloader, device, criterion):
 
 def main():
 
-    #device = get_device()
+    device = get_device()
     # running 140s per epoch on mps, want to test on cpu
-    device = torch.device("cpu")
+    # device = torch.device("cpu")
 
     print("Using device:", device)
 

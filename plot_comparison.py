@@ -70,9 +70,9 @@ def plot_runs(baseline_path, sam_path):
 
 if __name__ == "__main__":
 
-    BASELINE_CSV = "experiments/run_20251210_102211/log.csv" 
+    BASELINE_CSV = "experiments/run_20251212_111331/log.csv" 
     
     # Example: "experiments_sam/run_20231025_120000/log.csv"
-    SAM_CSV = "experiments_sam/run_20251210_133426/log.csv"
+    SAM_CSV = "experiments_sam/run_20251212_114342/log.csv"
 
     plot_runs(BASELINE_CSV, SAM_CSV)

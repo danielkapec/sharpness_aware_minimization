@@ -1,7 +1,7 @@
 import torch
 import torch.nn as nn
 import torch.optim as optim
-from torch.utils.data import DataLoader
+from torch.utils.data import DataLoader, random_split, Subset
 from torchvision import datasets, transforms, models
 from pathlib import Path
 
@@ -27,7 +27,7 @@ def get_device():
     else:
         return torch.device("cpu")
     
-def get_dataloaders(batch_size=128, num_workers=2):
+def get_dataloaders(batch_size=128, num_workers=2, train_fraction=1.0):
     transform_train = transforms.Compose([
         transforms.RandomCrop(32, padding=4),
         transforms.RandomHorizontalFlip(),
@@ -44,12 +44,24 @@ def get_dataloaders(batch_size=128, num_workers=2):
 
     data_root = Path("./data")
 
-    train_dataset = datasets.CIFAR10(
+    full_train_dataset = datasets.CIFAR10(
         root = data_root,
         train = True,
         download = True,
         transform = transform_train,
     )
+
+    if train_fraction < 1.0:
+        n_total = len(full_train_dataset)
+        n_sub = int(train_fraction*n_total)
+        indices = torch.randperm(n_total)[:n_sub]
+        train_dataset = Subset(full_train_dataset, indices)
+        print(f"Using subset of cifar-10: {n_sub}/{n_total} train samples")
+    else:
+        train_dataset = full_train_dataset
+
+
+
 
     test_dataset = datasets.CIFAR10(
         root = data_root,
@@ -201,6 +213,7 @@ def main(num_epochs: int, num_workers: int):
     config = {
         "num_epochs": num_epochs,
         "num_workers": num_workers,
+        "train_fraction": .2,
         "batch_size": 128,
         "base_lr": 0.1,
         "momentum": 0.9,
@@ -226,7 +239,10 @@ def main(num_epochs: int, num_workers: int):
 
 
 
-    train_loader, test_loader = get_dataloaders(batch_size=config["batch_size"], num_workers=num_workers)
+    train_loader, test_loader = get_dataloaders(batch_size=config["batch_size"], 
+                                                num_workers=num_workers,
+                                                train_fraction=config["train_fraction"],
+                                                )
 
     model = get_model(num_classes=10).to(device)
     criterion = nn.CrossEntropyLoss()
